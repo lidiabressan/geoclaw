@@ -6,13 +6,13 @@
 !
 ! Many of these routines are based loosely on PADCIRC version 45.12 03/17/2006
 ! ==============================================================================
-module selva_storm_module
+module silva_storm_module
 
     implicit none
     save
 
     ! silva storm type definition
-    type selva_storm_type
+    type silva_storm_type
         ! Fore/hindcast size and current position
         integer :: num_casts
 
@@ -23,9 +23,7 @@ module selva_storm_module
         ! Track is a triplet with (time,longitude,latitude)
         real(kind=8), allocatable :: track(:,:)
 
-        ! Storm physics
-        real(kind=8) :: ambient_pressure = 101.3d3 ! Pascals
-        real(kind=8) :: rho_air = 1.3d0
+        ! Storm parameterization
         real(kind=8), allocatable :: max_wind_radius(:)
         real(kind=8), allocatable :: max_wind_speed(:)
         real(kind=8), allocatable :: central_pressure(:)
@@ -35,7 +33,7 @@ module selva_storm_module
         ! using a first order difference on the sphere
         real(kind=8), allocatable :: velocity(:,:)
 
-    end type selva_storm_type
+    end type silva_storm_type
 
     logical, private :: module_setup = .false.
 
@@ -58,7 +56,7 @@ module selva_storm_module
 contains
 
     ! Setup routine for the silva model
-    subroutine set_selva_storm(storm_data_path, storm, log_unit)
+    subroutine set_silva_storm(storm_data_path, storm, log_unit)
 
         use geoclaw_module, only: deg2rad, spherical_distance, coordinate_system
         use amr_module, only: t0, rinfinity
@@ -67,7 +65,7 @@ contains
 
         ! Subroutine I/O
         character(len=*), optional :: storm_data_path
-        type(selva_storm_type), intent(in out) :: storm
+        type(silva_storm_type), intent(in out) :: storm
         integer, intent(in) :: log_unit
 
         ! Local storage
@@ -197,14 +195,13 @@ contains
                 ! Conversions:
                 !  max_wind_speed - Convert knots to m/s
                 !  NO: max_wind_radius  - convert from nm to m
-                !  max_wind_radius  - cyclostrophic radius (Silva)
-                !  central_pressure - convert from mbar to Pa
+                !  max_wind_radius  - cyclostrophic radius (Silva) [km] to m
+                !  NO: central_pressure - convert from mbar to Pa
                 !  Radius of last isobar contour - convert from nm to m
                 storm%max_wind_speed(i) = real(max_wind_speed,kind=8) * 0.51444444d0
-! !                 storm%max_wind_radius(i) = real(max_wind_radius,kind=8) * 1.852000003180799d0 * 1000.d0
                 storm%max_wind_radius(i) = (0.4785* real(central_pressure,kind=8) - 413.01)*1000.0
                 storm%central_pressure(i) = real(central_pressure,kind=8) * 100.d0
-                storm%rrp(i) = real(RRP,kind=8) * 1.852000003180799d0 * 1000.d0
+                storm%rrp(i) = real(RRP,kind=8) * 1.852000003180799d0
 
             enddo
 
@@ -263,7 +260,7 @@ contains
             module_setup = .true.
         end if
 
-    end subroutine set_selva_storm
+    end subroutine set_silva_storm
 
 
     ! ==========================================================================
@@ -313,16 +310,16 @@ contains
 
 
     ! ==========================================================================
-    !  selva_storm_location(t,storm)
+    !  silva_storm_location(t,storm)
     !    Interpolate location of hurricane in the current time interval
     ! ==========================================================================
-    function selva_storm_location(t,storm) result(location)
+    function silva_storm_location(t,storm) result(location)
 
         implicit none
 
         ! Input
         real(kind=8), intent(in) :: t
-        type(selva_storm_type), intent(in out) :: storm
+        type(silva_storm_type), intent(in out) :: storm
 
         ! Output
         real(kind=8) :: location(2)
@@ -330,34 +327,34 @@ contains
         ! Junk storage
         real(kind=8) :: junk(2)
 
-        call get_selva_storm_data(t,storm,location, &
+        call get_silva_storm_data(t,storm,location, &
                                         junk,junk(1),junk(1),junk(1),junk(1))
 
-    end function selva_storm_location
+    end function silva_storm_location
 
     ! ==========================================================================
-    !  selva_storm_direction
+    !  silva_storm_direction
     !   Angle off of due north that the storm is traveling
     ! ==========================================================================
-    real(kind=8) function selva_storm_direction(t, storm) result(theta)
+    real(kind=8) function silva_storm_direction(t, storm) result(theta)
 
         implicit none
 
         ! Input
         real(kind=8), intent(in) :: t
-        type(selva_storm_type), intent(in) :: storm
+        type(silva_storm_type), intent(in) :: storm
 
         ! Locals
         real(kind=8) :: junk(2), velocity(2)
 
         ! Fetch velocity of storm which has direction encoded in it
-        call get_selva_storm_data(t, storm, junk, velocity, junk(1),  &
+        call get_silva_storm_data(t, storm, junk, velocity, junk(1),  &
                                                     junk(1), junk(1), junk(1))
 
         ! Unit directional vector
         theta = atan2(velocity(2),velocity(1))
 
-    end function selva_storm_direction
+    end function silva_storm_direction
 
     ! ==========================================================================
     !  storm_index(t,storm)
@@ -369,7 +366,7 @@ contains
 
         ! Input
         real(kind=8), intent(in) :: t
-        type(selva_storm_type), intent(in) :: storm
+        type(silva_storm_type), intent(in) :: storm
 
         ! Locals
         real(kind=8) :: t0,t1
@@ -413,10 +410,10 @@ contains
 
 
     ! ==========================================================================
-    !  get_selva_storm_data()
+    !  get_silva_storm_data()
     !    Interpolates in time and returns storm data.
     ! ==========================================================================
-    subroutine get_selva_storm_data(t, storm, location, velocity, &
+    subroutine get_silva_storm_data(t, storm, location, velocity, &
                                                 max_wind_radius,    &
                                                 max_wind_speed,     &
                                                 central_pressure,   &
@@ -428,7 +425,7 @@ contains
 
         ! Input
         real(kind=8), intent(in) :: t                       ! Current time
-        type(selva_storm_type), intent(in) :: storm   ! Storm
+        type(silva_storm_type), intent(in) :: storm   ! Storm
 
         ! Output
         real(kind=8), intent(out) :: location(2), velocity(2)
@@ -496,17 +493,17 @@ contains
         central_pressure = fn(7)
         rrp = fn(8)
 
-    end subroutine get_selva_storm_data
+    end subroutine get_silva_storm_data
 
 
     ! ==========================================================================
-    !  set_selva_storm_fields()
+    !  set_silva_storm_fields()
     ! ==========================================================================
-    subroutine set_selva_storm_fields(maux,mbc,mx,my,xlower, &
+    subroutine set_silva_storm_fields(maux,mbc,mx,my,xlower, &
                                     ylower,dx,dy,t,aux, wind_index, &
                                     pressure_index, storm)
 
-        use geoclaw_module, only: g => grav
+        use geoclaw_module, only: g => grav, rho_air, ambient_pressure
         use geoclaw_module, only: coriolis, deg2rad
         use geoclaw_module, only: spherical_distance
 
@@ -520,7 +517,7 @@ contains
 
         ! Storm description, need in out here since we may update the storm
         ! if at next time point
-        type(selva_storm_type), intent(in out) :: storm
+        type(silva_storm_type), intent(in out) :: storm
 
         ! Array storing wind and pressure field
         integer, intent(in) :: wind_index, pressure_index
@@ -531,43 +528,54 @@ contains
         real(kind=8) :: f, mwr, mws, Pc, Pa, dp, wind, tv(2), rrp
         real(kind=8) :: mod_mws, trans_speed, ramp
         integer :: i,j
-        real(kind=8) :: Fv, Nc, alpha
+        real(kind=8) :: Fv, Nc, teta, alpha
 
 
         ! Get storm data interpolated in time
-        call get_selva_storm_data(t,storm,sloc,tv,mwr,mws,Pc,rrp)
+        call get_silva_storm_data(t,storm,sloc,tv,mwr,mws,Pc,rrp)
+
+        !!! I dati dello strom sono in S.I.
+        !!! ERN fa i calcoli in altre u.d.m.
+        !!! converto qui e poi converno indietroa al S.I.
 
         ! Other quantities of interest
-        Pa = storm%ambient_pressure
+        Pa = ambient_pressure
 
-        ! Calculate silva parameters
-        ! Subtract translational speed of storm from maximum wind speed
-        ! to avoid distortion in the silva curve fit.  Added back later
-        trans_speed = sqrt(tv(1)**2 + tv(2)**2)
-        mod_mws = mws - trans_speed
+        !conversions
+        Pa = Pa*0.01
+        ! converti Pa to mbar
+        Pc = Pc * 0.01
+        ! converti m to km
+        mwr = mwr * 0.001
+        ! converti km/h to m/s
+        mws = mws / 3.6
 
-        ! Convert wind speed (10 m) to top of atmospheric boundary layer
-!         mod_mws = mod_mws / atmos_boundary_layer
 
         ! Calculate central pressure difference
         dp = Pa - Pc
         ! Limit central pressure deficit due to bad ambient pressure,
         ! really should have better ambient pressure...
-        if (dp < 100.d0) dp = 100.d0
+        if (dp < 1.d0) dp = 1.d0
 
-        ! B to compute the pressure field
-        ! Calculate silva parameters and limit the result
-        !! B = storm%rho_air * exp(1.d0) * (mod_mws**2) / dp
-        !! if (B <  1.d0) B = 1.d0
-        !! if (B > 2.5d0) B = 2.5d0
-        !! B = 1.d0
+        ! Calculate silva parameters
+        ! Subtract translational speed of storm from maximum wind speed
+        ! to avoid distortion in the silva curve fit.  Added back later
+!         trans_speed = sqrt(tv(1)**2 + tv(2)**2)
+!         mod_mws = mws - trans_speed
+        ! Convert wind speed (10 m) to top of atmospheric boundary layer
+!         mod_mws = mod_mws / atmos_boundary_layer
+
+        !! UR = 21.8 *sqrt(PN − P0) − 0.5* f*R [km/h]
+        !! f Coriolis should be converted in rad/h
+
+        mod_mws = 21.8*sqrt(dp)-0.5* coriolis(sloc(2))/3600. *mwr
 
         ! Set initial wind and pressure field, do not really need to do this
-!         aux(wind_index:wind_index+1,:,:) = 0.d0
-!         aux(pressure_index,:,:) = Pa
+        aux(wind_index:wind_index+1,:,:) = 0.d0
+        aux(pressure_index,:,:) = Pa
 
         ! angle of direction of cyclon
-        teta = atan2( tv(2), tv(1) )
+        teta = atan2( tv(1), tv(2) )
 
 
         ! Set fields
@@ -581,67 +589,52 @@ contains
 
                 ! Calculate storm centric polar coordinate location of grid
                 ! cell center, uses Haversine formula
+                ! r in m...
                 r = spherical_distance(x, y, sloc(1), sloc(2))
+
+                ! Set pressure field and convert [mb] -- > [Pa]
+                aux(pressure_index,i,j) = (Pc + dp * exp(-(mwr*1000. / r)))*100.d0
 
                 ! Compute angles:
                 ! theta: angle of point x,y respect to cyclon eye
-
                 !! controlla gli angoli sono sbagliati per ERN
                 theta = atan2((y - sloc(2)),(x - sloc(1)))
-! !                 alpha = atan2((x - sloc(1)), (y - sloc(2)))
+                alpha = atan2((x - sloc(1)), (y - sloc(2)))
 
-                call calc_Fv(Nc, LOG10(r/mwr), Fv)
-
-                ! Set pressure field [mb] -- > [Pa]
-                aux(pressure_index,i,j) = Pc + dp * exp(-(mwr / r))
-
+                ! r in m...
+                call calc_Fv(Nc, LOG10(r/mwr/1000.), Fv)
                 ! Speed of wind at this point
-              !  wind = sqrt((mwr / r)**B &
-              !          * exp(1.d0 - (mwr / r)**B) * mws**2.d0 &
-              !          + (r * f)**2.d0 / 4.d0) - r * f / 2.d0
-
                 !!! wind = 0.886* (Fv * UR + 0.5* Vf_mod * np.cos(teta-beta))
-                wind = 3.6* 0.886* ( Fv * mod_mws + &
-                     & 0.5* SQRT(tv(1)*tv(1)+tv(2)*tv(2)) * cos(theta-teta) )
-
+                wind = 0.886* ( Fv * mod_mws + &
+                     & 0.5* SQRT(tv(1)*tv(1)+tv(2)*tv(2)) * cos(alpha-teta) )
 
                 ! Also convert from 8 minute to 1 minute
                 ! sustained winds
                 ! Vc = 0.002 * Vm**2 + 0.9953 * Vm
+                wind = wind* (0.0012 *wind+ 1.1114 )
+
+                ! First convert from km/h to m/s
                 ! Then convert to 10-min average wind,
                 ! with conversion factor G= 1.11
                 ! average wind=(max 1-min sustained wind )/ G
-                wind = wind* (0.0012 *wind+ 1.1114 ) /1.11
-
-                !! conversion from km/h to m/s
-                wind = wind*3.6
+                !!! wind = 3.6 * wind : conversion [km/h] --> [m/s]
+                wind = wind*3.6/1.11
 
                 ! Velocity components of storm (assumes perfect vortex shape)
                 aux(wind_index,i,j)   = -wind * sin(theta)
                 aux(wind_index+1,i,j) =  wind * cos(theta)
 
-                ! Add the storm translation speed
-                ! Determine translation speed that should be added to final
-                ! storm wind speed.  This is tapered to zero as the storm wind
-                ! tapers to zero toward the eye of the storm and at long
-                ! distances from the storm
-               ! aux(wind_index,i,j) = aux(wind_index,i,j)                 &
-               !                                     + (abs(wind) / mws) * tv(1)
-               ! aux(wind_index+1,i,j) = aux(wind_index+1,i,j)             &
-               !                                     + (abs(wind) / mws) * tv(2)
-
-
-                ! Apply distance ramp down(up) to fields to limit scope
-                ramp = 0.5d0 * (1.d0 - tanh((r - rrp) / RAMP_WIDTH))
-                aux(pressure_index,i,j) = Pa + (aux(pressure_index,i,j) - Pa) &
-                                        * ramp
-                aux(wind_index:wind_index+1,i,j) =                        &
-                                        aux(wind_index:wind_index+1,i,j)  &
-                                        * ramp
+                !!! Apply distance ramp down(up) to fields to limit scope
+                !!ramp = 0.5d0 * (1.d0 - tanh((r - rrp) / RAMP_WIDTH))
+                !!aux(pressure_index,i,j) = Pa + (aux(pressure_index,i,j) - Pa) &
+                !!                        * ramp
+                !!aux(wind_index:wind_index+1,i,j) =                        &
+                !!                        aux(wind_index:wind_index+1,i,j)  &
+                !!                        * ramp
             enddo
         enddo
 
-    end subroutine set_selva_storm_fields
+    end subroutine set_silva_storm_fields
 
 
     subroutine calc_Fv(Nc, log10rR, Fv)
@@ -656,20 +649,20 @@ contains
             d  = -8.311
         else
             if(Nc<=0.005)then
-                a = 0.033 +  Nc*( -16.1  + 161.9* Nc )
-                b = -0.43 +  Nc*(  38.9  - 316.*  Nc )
-                c = 0.113 +  Nc*( -28.6  + 71.1*  Nc )
-                d =       +  Nc*(   1.818 + 80.6*  Nc )
+                a = 0.033 +  Nc*( -16.1   + 161.9* Nc )
+                b = -0.43 +  Nc*(  38.9   - 316. * Nc )
+                c = 0.113 +  Nc*( -28.6   + 71.1 * Nc )
+                d =       +  Nc*(   1.818 + 80.6 * Nc )
             else
-                a = -0.175 + Nc*(- 0.76 + Nc*(   11.7 + Nc*(- 28.1 +  17.* Nc ))
-                b =  0.235 + Nc*(  2.71 + Nc*( - 67.6 + Nc*( 189.  - 155.* Nc ))
-                c = -0.468 + Nc*(- 9.   + Nc*(   87.8 + Nc*(-224.  + 183*  Nc ))
-                d =  0.082 + Nc*(+ 3.33 + Nc*( - 26.  + Nc*(  63.8 -  51.4*Nc ))
+                a = -0.175 + Nc*(- 0.76 + Nc*(   11.7 + Nc*(- 28.1 +  17.* Nc )))
+                b =  0.235 + Nc*(  2.71 + Nc*( - 67.6 + Nc*( 189.  - 155.* Nc )))
+                c = -0.468 + Nc*(- 9.   + Nc*(   87.8 + Nc*(-224.  + 183*  Nc )))
+                d =  0.082 + Nc*(+ 3.33 + Nc*( - 26.  + Nc*(  63.8 -  51.4*Nc )))
             end if
         end if
         Fv = log10rR*(a+log10rR*(b+log10rR*(c+d*log10rR)))
     end subroutine
-end module selva_storm_module
+end module silva_storm_module
 
 
 
