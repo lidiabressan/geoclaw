@@ -2,7 +2,7 @@
 subroutine fgmax_values(mx,my,meqn,mbc,maux,q,aux,dx,dy, &
                    xlower,ylower,mask_patch,values)
 
-    ! Given a grid q (and aux if needed), set the elements of 
+    ! Given a grid q (and aux if needed), set the elements of
     !   values(mv,i,j)  for mv=1:FG_NUM_VAL
     ! to the desired values that will be output and/or monitored on
     ! the fixed grid(s).
@@ -12,9 +12,9 @@ subroutine fgmax_values(mx,my,meqn,mbc,maux,q,aux,dx,dy, &
     ! This library routine expects FG_NUM_VAL to be 1, 2, or 5 and sets:
     !   values(1,i,j) = h              (if FG_NUM_VAL >= 1)
     !   values(2,i,j) = speed          (if FG_NUM_VAL >= 2)
-    !   values(1,i,j) = momentum       (if FG_NUM_VAL == 5)
-    !   values(1,i,j) = momentum flux  (if FG_NUM_VAL == 5)
-    !   values(1,i,j) = -depth         (if FG_NUM_VAL == 5)
+    !   values(3,i,j) = momentum       (if FG_NUM_VAL == 5)
+    !   values(4,i,j) = momentum flux  (if FG_NUM_VAL == 5)
+    !   values(5,i,j) = -depth         (if FG_NUM_VAL == 5)
     ! The max of -depth can be used to determin the minimum depth of water
     ! at a point over the computation, useful in harbors where ships may be
     ! grounded if the depth goes too low.

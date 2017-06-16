@@ -8,15 +8,20 @@ subroutine fgmax_finalize()
 
     implicit none
     character(30) :: fname
-    character(1) :: cfg,cma
+    character(2) :: cfg,cma
     integer :: k,ifg,level,mv,ma
     type(fgrid), pointer :: fg
 
     do ifg=1,FG_num_fgrids
 
-        fg => FG_fgrids(ifg)   
+        fg => FG_fgrids(ifg)
 
-        cfg = char(ichar('0') + ifg)
+        if(ifg<9)then
+            cfg = '0'//char(ichar('0') + ifg)
+        else
+            cfg = '1'//char(ichar('0') + ifg-10)
+        end if
+
         fname = 'fort.FG' // cfg // '.valuemax'
         print *, 'Writing to file ', fname
         open(unit=FG_UNIT,file=trim(fname),status='unknown',form='formatted')
@@ -54,7 +59,7 @@ subroutine fgmax_finalize()
         ! deallocate(fg%valuemax,fg%levelmax,fg%aux,fg%x,fg%y)
         enddo
     if (FG_DEBUG) then
-        write(6,*) '+++ Fixed grid debugging written to fort.61 and fort.65'   
+        write(6,*) '+++ Fixed grid debugging written to fort.61 and fort.65'
         endif
 
 end subroutine fgmax_finalize

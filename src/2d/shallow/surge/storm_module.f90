@@ -3,7 +3,7 @@
 !    including AMR parameters and storm fields.  This module includes modules
 !    for specific implementations of storms such as the Holland model.
 ! ==============================================================================
-!  Distributed under the terms of the Berkeley Software Distribution (BSD) 
+!  Distributed under the terms of the Berkeley Software Distribution (BSD)
 !  license
 !                     http://www.opensource.org/licenses/
 ! ==============================================================================
@@ -13,6 +13,7 @@ module storm_module
     use holland_storm_module, only: holland_storm_type
     use constant_storm_module, only: constant_storm_type
     use stommel_storm_module, only: stommel_storm_type
+    use silva_storm_module, only: silva_storm_type
 
     implicit none
 
@@ -26,7 +27,7 @@ module storm_module
 
     ! Locations of wind and pressure fields
     integer :: wind_index, pressure_index
-    
+
     ! Source term control and parameters
     logical :: wind_forcing, pressure_forcing
 
@@ -37,7 +38,7 @@ module storm_module
             real(kind=8), intent(in) :: speed, theta
         end function drag_function
     end interface
-        
+
     ! Function pointer to wind drag requested
     procedure (drag_function), pointer :: wind_drag
 
@@ -51,10 +52,7 @@ module storm_module
     type(holland_storm_type), save :: holland_storm
     type(constant_storm_type), save :: constant_storm
     type(stommel_storm_type), save :: stommel_storm
-
-    ! Store physics here for ease of use
-    ! WARNING:  If these do not agree with the storm data objects things will break!
-    real(kind=8) :: rho_air, ambient_pressure
+    type(silva_storm_type), save :: silva_storm
 
     ! Wind drag maximum limit
     real(kind=8), parameter :: WIND_DRAG_LIMIT = 2.d-3
@@ -66,7 +64,7 @@ contains
     ! ========================================================================
     !   subroutine set_storm(data_file)
     ! ========================================================================
-    ! Reads in the data file at the path data_file.  Sets the following 
+    ! Reads in the data file at the path data_file.  Sets the following
     ! parameters:
     !     rho_air = density of air
     !     Pn = Ambient atmospheric pressure
@@ -82,19 +80,20 @@ contains
         use holland_storm_module, only: set_holland_storm
         use constant_storm_module, only: set_constant_storm
         use stommel_storm_module, only: set_stommel_storm
+        use silva_storm_module, only: set_silva_storm
 
         use geoclaw_module, only: pi
 
         implicit none
-        
+
         ! Input arguments
         character(len=*), optional, intent(in) :: data_file
-        
+
         ! Locals
         integer, parameter :: unit = 13
         integer :: i, drag_law
         character(len=200) :: storm_file_path, line
-        
+
         if (.not.module_setup) then
 
             ! Open file
@@ -103,12 +102,6 @@ contains
             else
                 call opendatafile(unit,'surge.data')
             endif
-            
-            ! Read in parameters
-            ! Physics
-            ! TODO: These are currently set directly in the types, should change!
-            read(unit,"(1d16.8)") rho_air
-            read(unit,"(1d16.8)") ambient_pressure
 
             ! Forcing terms
             read(unit,*) wind_forcing
@@ -131,7 +124,7 @@ contains
             read(unit, '(i2)') wind_index
             read(unit, '(i2)') pressure_index
             read(unit, *)
-            
+
             ! AMR parameters
             read(unit,'(a)') line
             if (line(1:1) == "F") then
@@ -150,21 +143,17 @@ contains
                 read(line,*) (R_refine(i),i=1,size(R_refine,1))
             end if
             read(unit,*)
-            
-            ! Storm Setup 
+
+            ! Storm Setup
             read(unit, "(i1)") storm_type
             read(unit, "(d16.8)") landfall
             read(unit, *) display_landfall_time
             read(unit, *) storm_file_path
-            
+
             close(unit)
 
             ! Print log messages
             open(unit=log_unit, file="fort.surge", status="unknown", action="write")
-            
-            write(log_unit,"(a,1d16.8)") "rho_air =          ",rho_air
-            write(log_unit,"(a,1d16.8)") "ambient_pressure = ",ambient_pressure
-            write(log_unit,*) ""
 
     !         write(log_unit,"(a,1d16.8)") "wind_tolerance =     ", wind_tolerance
     !         write(log_unit,"(a,1d16.8)") "pressure_tolerance = ", pressure_tolerance
@@ -191,6 +180,9 @@ contains
             else if (storm_type == 3) then
                 ! Stommel wind field
                 call set_stommel_storm(storm_file_path,stommel_storm,log_unit)
+            else if (storm_type == 4) then
+                ! Silva wind field
+                call set_silva_storm(storm_file_path,silva_storm,log_unit)
             else
                 print *,"Invalid storm type ",storm_type," provided."
                 stop
@@ -207,7 +199,7 @@ contains
     !   real(kind=8) function *_wind_drag(wind_speed)
     ! ========================================================================
     !  Calculates the drag coefficient for wind given the given wind speed.
-    !  
+    !
     !  Input:
     !      wind_speed = Magnitude of the wind in the cell
     !      theta = Angle with primary hurricane direciton
@@ -219,15 +211,15 @@ contains
     !    wave direction interaction with wind.  This implementation is based on
     !    the parameterization used in ADCIRC.  For more information see
     !
-    !    M.D. Powell (2006). “Final Report to the National Oceanic and 
-    !      Atmospheric Administration (NOAA) Joint Hurricane Testbed (JHT) 
+    !    M.D. Powell (2006). “Final Report to the National Oceanic and
+    !      Atmospheric Administration (NOAA) Joint Hurricane Testbed (JHT)
     !      Program.” 26 pp.
     !
     real(kind=8) pure function powell_wind_drag(wind_speed, theta)      &
                                          result(wind_drag)
-    
+
         implicit none
-        
+
         ! Input
         real(kind=8), intent(in) :: wind_speed, theta
 
@@ -269,9 +261,9 @@ contains
         ! Left sector =  [240.d0,  20.d0] - Center = 310
         ! Left Right sector = [310, 85] - Width = 145
         ! Right sector = [ 20.d0, 150.d0] - Center = 85
-        ! Right Rear sector = [85, 195] - Width = 
+        ! Right Rear sector = [85, 195] - Width =
         ! Rear sector =  [150.d0, 240.d0] - 195
-        ! Rear-Left sector = [85, 195] - Width = 
+        ! Rear-Left sector = [85, 195] - Width =
 
         ! Left - Right sector
         if (310.d0 < theta .and. theta <= 360.d0) then
@@ -298,7 +290,7 @@ contains
 
         ! Apply wind drag limit - May want to do this...
         ! wind_drag = min(WIND_DRAG_LIMIT, wind_drag)
-    
+
     end function powell_wind_drag
 
 
@@ -307,14 +299,14 @@ contains
     ! ========================
     !  This version is a simple limited version of the wind drag
     real(kind=8) pure function garret_wind_drag(wind_speed, theta) result(wind_drag)
-    
+
         implicit none
-        
+
         ! Input
         real(kind=8), intent(in) :: wind_speed, theta
-  
-        wind_drag = min(WIND_DRAG_LIMIT, (0.75d0 + 0.067d0 * wind_speed) * 1d-3)      
-    
+
+        wind_drag = min(WIND_DRAG_LIMIT, (0.75d0 + 0.067d0 * wind_speed) * 1d-3)
+
     end function garret_wind_drag
 
 
@@ -337,6 +329,7 @@ contains
 
         use holland_storm_module, only: holland_storm_location
         use constant_storm_module, only: constant_storm_location
+        use silva_storm_module, only: silva_storm_location
 
         implicit none
 
@@ -355,15 +348,18 @@ contains
                 location = constant_storm_location(t,constant_storm)
             case(3)
                 location = [rinfinity,rinfinity]
+            case(4)
+                location = silva_storm_location(t,silva_storm)
         end select
 
     end function storm_location
 
     real(kind=8) function storm_direction(t) result(theta)
-        
+
         use amr_module, only: rinfinity
         use holland_storm_module, only: holland_storm_direction
         use constant_storm_module, only: constant_storm_direction
+        use silva_storm_module, only: silva_storm_direction
 
         implicit none
 
@@ -379,6 +375,8 @@ contains
                 theta = constant_storm_direction(t,constant_storm)
             case(3)
                 theta = rinfinity
+            case(4)
+                theta = silva_storm_direction(t,silva_storm)
         end select
 
     end function storm_direction
@@ -390,6 +388,7 @@ contains
         use holland_storm_module, only: set_holland_storm_fields
         use constant_storm_module, only: set_constant_storm_fields
         use stommel_storm_module, only: set_stommel_storm_fields
+        use silva_storm_module, only: set_silva_storm_fields
 
         implicit none
 
@@ -413,6 +412,10 @@ contains
                 call set_stommel_storm_fields(maux,mbc,mx,my, &
                                     xlower,ylower,dx,dy,t,aux, wind_index, &
                                     pressure_index, stommel_storm)
+            case(4)
+                call set_silva_storm_fields(maux,mbc,mx,my, &
+                                    xlower,ylower,dx,dy,t,aux, wind_index, &
+                                    pressure_index, silva_storm)
         end select
 
     end subroutine set_storm_fields
@@ -422,12 +425,12 @@ contains
         implicit none
 
         real(kind=8), intent(in) :: t
-        
+
         ! We open this here so that the file flushes and writes to disk
         open(unit=track_unit,file="fort.track",action="write",position='append')
 
         write(track_unit,"(4e26.16)") t,storm_location(t),storm_direction(t)
-        
+
         close(track_unit)
 
     end subroutine output_storm_location
